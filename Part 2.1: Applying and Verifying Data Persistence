@@ -1,0 +1,30 @@
+1.Remove the old ephemeral Redis deployment
+
+kubectl delete deployment redis-deployment -n mini-project-1
+
+2.Deploy the new StatefulSet and Headless Service
+
+kubectl apply -f 02-redis-statefulset.yaml
+
+Verify the PVC was dynamically created and bound:
+
+kubectl get pvc -n mini-project-1
+
+Verification: Status should show Bound for redis-data-redis-0.
+
+3.Write test data to Redis
+
+kubectl exec -it redis-0 -n mini-project-1 -- redis-cli -a SuperSecureK8sPassword123! set mykey "KubernetesPersistenceWorks"
+
+4.Kill the Redis pod to test data survival:
+
+Delete the redis-0 pod:
+
+kubectl delete pod redis-0 -n mini-project-1
+
+Wait for redis-0 to regenerate, then retrieve the key:
+
+kubectl exec -it redis-0 -n mini-project-1 -- redis-cli -a SuperSecureK8sPassword123! get mykey
+
+Verification: It returns "KubernetesPersistenceWorks". Your data survived total pod destruction!
+

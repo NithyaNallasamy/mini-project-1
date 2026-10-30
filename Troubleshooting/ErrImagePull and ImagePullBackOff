@@ -1,0 +1,104 @@
+Troubleshooting: Minikube DNS & ImagePullBackOff Fixes: Contains the diagnostic breakdown for server misbehaving/TLS handshake timeout errors, host pre-pull commands (minikube image load), and the /etc/resolv.conf nameserver patch.
+
+ErrImagePull and ImagePullBackOff mean the node's container runtime cannot download the container images.
+
+Because both the Redis pod (pulling redis:7-alpine from Docker Hub) and frontend pods (pulling from GitHub Container Registry) failed simultaneously, this indicates one of two root causes:
+
+1. Docker / Cluster DNS / Internet Connectivity: Your local cluster (Kind/Minikube) inside Docker cannot resolve external DNS or reach the public internet.
+
+2. Registry Rate Limiting / Timeout: Docker Hub or network firewall blocked the initial pull request.
+
+Step 1: Diagnose the Exact Failure Reason
+
+Run kubectl describe on one of the failing pods to see the exact engine error in the Events section at the bottom:
+
+kubectl describe pod frontend-deployment-549787df48-8qd46 -n mini-project-1
+
+Look at the last 3-5 lines under Events:. You will typically see one of these errors:
+
+dial tcp: lookup registry-1.docker.io ...: no such host --> DNS / Internet issue inside the cluster container.
+
+toomanyrequests: You have reached your pull rate limit --> Docker Hub anonymous pull rate limit.
+
+net/http: TLS handshake timeout --> Slow connection or VPN/proxy interference.
+
+
+Step 2: The Quickest Fix (Pre-load Images Locally)
+
+If you are using Kind or Minikube, you do not need to let the cluster pull the images over its internal virtual network. You can pull them onto your host machine using Docker directly, and then side-load them straight into the cluster.
+
+If you are using Minikube:
+
+minikube image load redis:7-alpine
+minikube image load ghcr.io/stefanprodan/podinfo:6.5.4
+
+Step 3: Watch the Pods Recover
+Once the images are loaded or internet connectivity is restored, delete the stuck pods (or let the backoff timer expire) so Kubernetes attempts an immediate start:
+
+kubectl delete pods --all -n mini-project-1
+kubectl get pods -n mini-project-1 -w
+
+All pods should quickly transition from ContainerCreating to Running (1/1 READY).
+
+Here is the root cause from your events log:
+
+dial tcp: lookup ghcr.io on 192.168.24.151:53: server misbehaving
+net/http: TLS handshake timeout
+
+Your Minikube VM/container inherited a local upstream DNS server (192.168.24.151:53) from your host/router or WSL, and that server is dropping or failing external DNS queries. Because Minikube cannot resolve internet domains, image pulls time out.
+
+Here are the two easiest ways to fix this.
+
+Solution 1: Pre-pull with Host Docker & Load (Fastest)
+
+Since your host or WSL terminal has direct internet access, pull the images locally and push them into the Minikube environment:
+
+# 1. Pull on your local machine / WSL Docker
+docker pull redis:7-alpine
+docker pull ghcr.io/stefanprodan/podinfo:6.5.4
+
+# 2. Side-load directly into Minikube's local cache
+minikube image load redis:7-alpine
+minikube image load ghcr.io/stefanprodan/podinfo:6.5.4
+
+Now force Kubernetes to re-evaluate without waiting for the back-off timer:
+
+kubectl delete pods --all -n mini-project-1
+kubectl get pods -n mini-project-1 -w
+
+Solution 2: Fix Minikube's Upstream DNS (Permanent Fix)
+
+If you want Minikube to be able to download any image in the future without side-loading, force it to use public DNS servers (8.8.8.8 and 1.1.1.1).
+
+Step 1: Update /etc/resolv.conf inside the Minikube node
+
+SSH into the Minikube container/VM:
+
+minikube ssh
+
+Once inside the Minikube shell, run:
+
+sudo sh -c 'echo "nameserver 8.8.8.8\nnameserver 1.1.1.1" > /etc/resolv.conf'
+# Test that DNS resolution works now
+nslookup ghcr.io
+exit
+
+Step 2: Restart the pods
+
+kubectl delete pods --all -n mini-project-1
+kubectl get pods -n mini-project-1 -w
+
+All three pods will transition to Running (1/1 READY).
+
+If You Need to Restart Minikube with Fixed DNS
+If you ever restart Minikube from scratch, pass public DNS directly so it doesn't pick up the broken 192.168.24.151 server:
+
+minikube delete
+minikube start --driver=docker --cpus=2 --memory=4096 --dns-domain=cluster.local --extra-config=kubelet.resolv-conf=/run/systemd/resolve/resolv.conf
+
+Troubleshooting: Minikube DNS & ImagePullBackOff Fixes: Contains the diagnostic breakdown for server misbehaving/TLS handshake timeout errors, host pre-pull commands (minikube image load), and the /etc/resolv.conf nameserver patch.
+
+Once you run minikube image load or patch the nameserver and delete the pending pods, check their status with:
+
+Bash
+kubectl get pods -n mini-project-1 -w

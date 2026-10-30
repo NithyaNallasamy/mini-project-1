@@ -1,0 +1,29 @@
+Events:
+
+  Type     Reason     Age                   From               Message
+
+  ----     ------     ----                  ----               -------
+
+  Normal   Scheduled  4m32s                 default-scheduler  Successfully assigned mini-project-1/frontend-deployment-549787df48-8qd46 to minikube
+
+  Warning  Failed     2m40s                 kubelet            spec.containers{web}: Failed to pull image "ghcr.io/stefanprodan/podinfo:6.5.4": Error response from daemon: Get "https://ghcr.io/v2/": dial tcp: lookup ghcr.io on 192.168.24.151:53: server misbehaving
+
+  Warning  Failed     98s (x3 over 4m)      kubelet            spec.containers{web}: Failed to pull image "ghcr.io/stefanprodan/podinfo:6.5.4": Error response from daemon: Get "https://ghcr.io/v2/": net/http: TLS handshake timeout
+
+  Warning  Failed     98s (x4 over 4m)      kubelet            spec.containers{web}: Error: ErrImagePull
+
+  Normal   BackOff    21s (x11 over 3m59s)  kubelet            spec.containers{web}: Back-off pulling image "ghcr.io/stefanprodan/podinfo:6.5.4"
+
+  Warning  Failed     21s (x11 over 3m59s)  kubelet            spec.containers{web}: Error: ImagePullBackOff
+
+  Normal   Pulling    8s (x5 over 4m28s)    kubelet            spec.containers{web}: Pulling image "ghcr.io/stefanprodan/podinfo:6.5.4"
+
+nithyan@DESKTOP-DOG7Q9U:~/projects/my-k8s-project/k8s-mini-project-1$ kubectl get pods -n mini-project-1
+
+NAME                                   READY   STATUS             RESTARTS   AGE
+
+frontend-deployment-549787df48-8qd46   0/1     ImagePullBackOff   0          56m
+
+frontend-deployment-549787df48-vz4tz   0/1     ImagePullBackOff   0          56m
+
+redis-deployment-5db6cc7c87-jhcv9      0/1     ImagePullBackOff   0          56m 
