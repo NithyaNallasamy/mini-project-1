@@ -1,0 +1,56 @@
+[User Browser]
+       │ :8080 (Port Forward / NodePort)
+       ▼
+[Service: frontend-svc] (ClusterIP :80 -> targetPort :5000)
+       │
+       ├─► [Pod: flask-app (replica 1)] ──┐
+       └─► [Pod: flask-app (replica 2)] ──┤ (reads ConfigMap: REDIS_HOST)
+                                          │ (reads Secret: REDIS_PASSWORD)
+                                          ▼
+                         [Service: redis-svc] (ClusterIP :6379)
+                                          │
+                                          ▼
+                              [Pod: redis (single instance)]
+                              AWSTemplateFormatVersion: "2010-09-09"
+                              "AWSTemplateFormatVersion": "2010-09-09"
+                              "AWSTemplateFormatVersion": "2010-09-09"
+
+
+┌───────────────────────────────────────────────────────────────┐
+                     │                       KUBERNETES CLUSTER                      │
+                     │                     Namespace: mini-project-1                 │
+                     │                                                               │
+[ External User ]    │   ┌────────────────────────┐                                  │
+       │             │   │       ConfigMap        │                                  │
+       │ :8080       │   │   (REDIS_HOST, PORT)   │                                  │
+       ▼             │   └───────────┬────────────┘                                  │
+┌──────────────┐     │               │                                               │
+│ Port-Forward │ ───►│      ┌────────▼────────┐                                      │
+│  or Ingress  │     │      │   frontend-svc  │                                      │
+└──────────────┘     │      │   (ClusterIP)   │                                      │
+                     │      └────────┬────────┘                                      │
+                     │               │                                               │
+                     │       ┌───────┴───────┐ Load-balanced across endpoints        │
+                     │       ▼               ▼                                       │
+                     │ ┌───────────┐   ┌───────────┐                                 │
+                     │ │ frontend  │   │ frontend  │ (Stateless Pods, 2 replicas)    │
+                     │ │  pod 1    │   │  pod 2    │                                 │
+                     │ └─────┬─────┘   └─────┬─────┘                                 │
+                     │       │               │                                       │
+                     │       └───────┬───────┘ Connects to internal DNS: "redis-svc" │
+                     │               ▼                                               │
+                     │      ┌─────────────────┐                                      │
+                     │      │    redis-svc    │                                      │
+                     │      │   (ClusterIP)   │                                      │
+                     │      └────────┬────────┘                                      │
+                     │               ▼                                               │
+                     │      ┌─────────────────┐                                      │
+                     │      │    redis pod    │ (In-memory Data Store)               │
+                     │      │  (Single Pod)   │                                      │
+                     │      └────────▲────────┘                                      │
+                     │               │                                               │
+                     │   ┌───────────┴────────────┐                                  │
+                     │   │         Secret         │                                  │
+                     │   │    (REDIS_PASSWORD)    │                                  │
+                     │   └────────────────────────┘                                  │
+                     └───────────────────────────────────────────────────────────────┘

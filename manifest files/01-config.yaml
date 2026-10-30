@@ -1,0 +1,24 @@
+#1. Namespace & Configuration (01-config.yaml)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mini-project-1
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: mini-project-1
+data:
+  REDIS_HOST: "redis-svc"
+  REDIS_PORT: "6379"
+  APP_ENV: "production"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+  namespace: mini-project-1
+type: Opaque
+stringData:
+  REDIS_PASSWORD: "SuperSecureK8sPassword123!"

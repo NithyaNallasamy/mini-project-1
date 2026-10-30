@@ -1,0 +1,24 @@
+A distributed, state-aware hit/request counter application:
+
+    User accesses the frontend web app.
+
+    Web app queries the Redis caching layer to fetch the current visitor/request count.
+
+    The frontend commands Redis to increment the count and return the value.
+
+    Stateless frontend decoupled from data store allows infinite replica scaling without losing session/counter state.
+
+
+At its core, this project is a distributed, state-aware hit/request counter application.
+
+When a user accesses the web application via their browser, the following happens:
+
+The request hits the web application frontend (podinfo/Flask).
+
+The web frontend queries the Redis data store to fetch the current visitor/request count.
+
+The frontend commands Redis to increment the count by 1 and save the new value.
+
+The frontend renders an HTML page showing the server info alongside the live count.
+
+Because state is decoupled from the web layer and stored in Redis, you can scale the web application to 10 replicas, kill pods, or roll out new versions without losing count data or dropping user sessions.

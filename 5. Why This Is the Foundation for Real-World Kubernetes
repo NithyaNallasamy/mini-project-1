@@ -1,0 +1,6 @@
+| Beginner Anti-Pattern                             | How This Architecture Solves It                                          |
+|---------------------------------------------------|--------------------------------------------------------------------------|
+| Hardcoding database IPs in container code         | Resolves dependencies via CoreDNS Service discovery (redis-svc)          |
+| Storing passwords inside container images         | Decouples credentials using Kubernetes Secrets                           |
+| Traffic hitting failing containers during deploys | Prevents broken traffic routing using Readiness Probes                   |
+| A single crash brings down the service            | Manages high availability using ReplicaSets and self-healing deployments |

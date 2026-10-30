@@ -1,0 +1,36 @@
+1.Apply the manifests:
+
+Deploy all resources to your cluster in order:
+
+kubectl apply -f 01-config.yaml
+kubectl apply -f 02-redis.yaml
+kubectl apply -f 03-frontend.yaml
+
+2.Monitor the rollout
+
+Check pod status and confirm all pods enter the Running state:
+
+kubectl get pods -n mini-project-1 -w
+
+Verify the services have internal cluster IPs:
+
+kubectl get svc -n mini-project-1
+
+3.Forward the frontend port to localhost:
+
+Establish a port-forward tunnel from your workstation to the frontend service:
+
+kubectl port-forward svc/frontend-svc 8080:80 -n mini-project-1
+
+Open http://localhost:8080 in your browser. Each refresh increments the cache counter stored inside Redis.
+
+4.Test resilience and zero downtime:
+
+Run a continuous curl command in one terminal, then trigger a rolling restart of the frontend deployment:
+
+kubectl rollout restart deployment/frontend-deployment -n mini-project-1
+kubectl rollout status deployment/frontend-deployment -n mini-project-1
+
+Because maxUnavailable: 0 is set with readiness probes, all requests continue without dropped connections.
+
+

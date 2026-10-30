@@ -1,0 +1,27 @@
+1. Isolation & Security (Namespace, ConfigMap, Secret)
+
+Namespace (mini-project-1): Provides a logical security boundary isolating this stack's objects, IP pools, and resource quotas from other workloads running in the same cluster.
+
+ConfigMap (app-config): Stores non-sensitive parameters (REDIS_HOST, REDIS_PORT, APP_ENV). This ensures container images remain immutable—changing target environments requires no code rebuilds.
+
+Secret (app-secret): Stores sensitive data (REDIS_PASSWORD). Injected at container runtime as environment variables via Kubernetes secretKeyRef.
+
+2. Stateless Presentation Tier (Frontend Deployment & Service)
+
+Replication (replicas: 2): Two identical web pods run simultaneously. If one crashes, Kubernetes restarts it automatically.
+
+frontend-svc (ClusterIP Service): Assigns a stable virtual internal IP address and internal DNS record (frontend-svc.mini-project-1.svc.cluster.local). As frontend pods scale or recreate with new transient IPs, kube-proxy updates iptables/IPVS rules to balance traffic across all healthy replicas.
+
+Rolling Update Strategy (maxUnavailable: 0, maxSurge: 1): During updates, Kubernetes spins up a new pod before terminating an old one, ensuring zero downtime.
+
+3. State/Caching Tier (Redis Deployment & Service)
+
+Redis Pod: Single-node instance running Alpine Redis configured with strict resource boundaries (requests and limits) to protect the node against out-of-memory (OOM) host crashes.
+
+redis-svc (ClusterIP): Exposes port 6379. The frontend pods resolve the hostname redis-svc through CoreDNS instead of hardcoded pod IPs.
+
+4. Cluster Self-Healing (Probes)
+
+Readiness Probes: Checks if a container is ready to accept user traffic (e.g., verifying Redis responds to PING or the frontend responds to /readyz). If the check fails, Kubernetes removes the pod from the Service endpoints so users never see HTTP errors.
+
+Liveness Probes: Continuously monitors container vitals. If an application enters a deadlocked state or memory leak, the kubelet kills the unhealthy container and restarts it.
