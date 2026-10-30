@@ -1,0 +1,56 @@
+Kubernetes operates on a declarative reconciliation loop (desired state == current state). 
+You can test both immediate crash recovery and probe-driven restarts.
+
+1.Open a real-time cluster watcher:
+
+Run in a separate terminal.
+
+Keep this watch command active so you see pod status transitions, terminations, and restarts live:
+
+kubectl get pods -n mini-project-1 -w
+
+2.Test 1: Manual Pod Deletion (ReplicaSet Recovery):
+
+Delete one of the running frontend pods:
+
+TARGET_POD=$(kubectl get pods -n mini-project-1 -l app=frontend -o jsonpath='{.items[0].metadata.name}')
+kubectl delete pod $TARGET_POD -n mini-project-1
+
+What happens under the hood:
+
+The pod enters Terminating.
+
+The Deployment controller detects current replicas (1) < desired replicas (2).
+
+A replacement pod is immediately scheduled and initialized, keeping your application online without dropped traffic.
+
+3.Test 2: Process Crash Simulation (SIGKILL):
+
+Kill the main container process inside a running pod directly:
+
+TARGET_POD=$(kubectl get pods -n mini-project-1 -l app=frontend -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n mini-project-1 $TARGET_POD -- kill 1
+
+What happens under the hood:
+
+The container process exits with a non-zero code.
+
+The local node kubelet notices the container died and applies the pod’s restartPolicy: Always.
+
+The pod’s RESTARTS count increments by 1, and the pod returns to Running in 1–2 seconds.
+
+4.Test 3: Liveness Probe Failure Simulation:
+
+Break the Redis liveness probe condition to watch the kubelet actively intervene:
+
+# Kill the redis-server process directly inside the Redis container
+REDIS_POD=$(kubectl get pods -n mini-project-1 -l app=redis -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n mini-project-1 $REDIS_POD -- redis-cli -a SuperSecureK8sPassword123! shutdown
+
+What happens under the hood:
+
+The TCP/exec probe fails consecutively past the failureThreshold.
+
+The kubelet sends a SIGTERM followed by a SIGKILL to restart the container automatically.
+
+

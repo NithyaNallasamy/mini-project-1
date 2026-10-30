@@ -1,0 +1,84 @@
+The Problem with Deployments for Redis
+In our initial setup, Redis uses ephemeral container storage. If the Redis pod crashes or gets rescheduled to another node, all count data is permanently lost.
+
+To make data durable, we upgrade Redis from a Deployment to a StatefulSet with Persistent Volume Claims (PVC).
+
+Updated Redis Manifest (02-redis-statefulset.yaml)
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: mini-project-1
+spec:
+  serviceName: "redis-svc"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          # Enable AOF (Append Only File) persistence to disk every second
+          command:
+            - "redis-server"
+            - "--appendonly"
+            - "yes"
+            - "--protected-mode"
+            - "no"
+            - "--requirepass"
+            - "$(REDIS_PASSWORD)"
+            - "--dir"
+            - "/data"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: REDIS_PASSWORD
+          ports:
+            - containerPort: 6379
+              name: redis
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+  # Kubernetes dynamically provisions a PersistentVolume (PV) for each replica
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-svc
+  namespace: mini-project-1
+spec:
+  clusterIP: None # Headless Service required for StatefulSets
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: redis
