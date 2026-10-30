@@ -1,0 +1,20 @@
+Why StatefulSet + PVC?
+
+In a standard Deployment, if a pod dies, any replacement pod gets a fresh ephemeral disk. Additionally, pods receive random hash names (redis-deployment-5db6cc-xyz), making predictable network identity impossible.
+
+A StatefulSet provides two critical guarantees:
+
+1.Stable Network Identity: Pods are named sequentially starting at 0 (redis-0, redis-1).
+
+2.Dedicated Storage Binding: Each pod gets its own dedicated PersistentVolumeClaim (PVC) from a volumeClaimTemplate. If redis-0 dies or gets moved to another node, Kubernetes re-attaches the exact same volume to the recreated redis-0.
+
+Step 1: Clean Up Old Ephemeral Redis
+Delete the old Deployment and Service first so names and port bindings don't collide:
+
+kubectl delete deployment redis-deployment -n mini-project-1
+kubectl delete service redis-svc -n mini-project-1
+
+Step 2: Create the StatefulSet Manifest
+Save the following file as 02-redis-statefulset.yaml:
+
+

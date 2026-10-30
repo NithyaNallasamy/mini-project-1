@@ -1,3 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-svc
+  namespace: mini-project-1
+  labels:
+    app: redis
+spec:
+  ports:
+    - port: 6379
+      name: redis
+  # Headless service: returns pod IP directly, preserving network identity
+  clusterIP: None
+  selector:
+    app: redis
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -17,13 +33,11 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
-          # Enable AOF (Append Only File) persistence to disk every second
+          # Enable AOF (Append Only File) to write every write operation to /data
           command:
             - "redis-server"
             - "--appendonly"
             - "yes"
-            - "--protected-mode"
-            - "no"
             - "--requirepass"
             - "$(REDIS_PASSWORD)"
             - "--dir"
@@ -38,7 +52,7 @@ spec:
             - containerPort: 6379
               name: redis
           volumeMounts:
-            - name: redis-data
+            - name: redis-storage
               mountPath: /data
           resources:
             requests:
@@ -47,31 +61,25 @@ spec:
             limits:
               cpu: "200m"
               memory: "128Mi"
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - redis-cli -a "$REDIS_PASSWORD" ping | grep PONG
+            initialDelaySeconds: 5
+            periodSeconds: 5
           livenessProbe:
             tcpSocket:
               port: 6379
             initialDelaySeconds: 5
             periodSeconds: 10
-  # Kubernetes dynamically provisions a PersistentVolume (PV) for each replica
+  # Automatically provisions a PersistentVolume per pod replica
   volumeClaimTemplates:
     - metadata:
-        name: redis-data
+        name: redis-storage
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
             storage: 1Gi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: redis-svc
-  namespace: mini-project-1
-spec:
-  clusterIP: None # Headless Service required for StatefulSets
-  selector:
-    app: redis
-  ports:
-    - port: 6379
-      targetPort: 6379
-      name: redis
