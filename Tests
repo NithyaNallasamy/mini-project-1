@@ -1,0 +1,113 @@
+Step 0: Set Up Real-Time Observation
+Open a second terminal window (keep it side-by-side with your working shell) and start a live watch on the namespace:
+
+Bash
+kubectl get pods -n mini-project-1 -w
+Keep this running throughout the experiments so you can observe the status transitions in real time.
+
+
+Test 1: Simulating Pod Deletion (Deployment Controller Reconciliation)
+
+In this test, you delete a healthy pod. The underlying controller immediately detects a discrepancy between the desired state (replicas: 2) and actual state (replicas: 1).
+
+1.Identify a target frontend pod:
+
+Get the name of one of your running frontend pods:
+
+Bash
+TARGET_POD=$(kubectl get pods -n mini-project-1 -l app=frontend -o jsonpath='{.items[0].metadata.name}')
+echo "Target pod to delete: $TARGET_POD"
+
+2.Delete the pod:
+
+Issue the delete command:
+
+Bash
+
+kubectl delete pod $TARGET_POD -n mini-project-1
+
+3.Observe the watcher terminal:
+
+Notice the lifecycle events in your watch terminal:
+
+The target pod enters Terminating.
+Simultaneously, a new pod with a fresh random hash suffix transitions: Pending → ContainerCreating → Running.Check the final state:
+
+Bash
+
+kubectl get pods -n mini-project-1
+
+Result: Total frontend count never drops below 2 healthy pods.
+
+Test 2: Process Crash via SIGKILL (Kubelet Restarts Container)
+
+Here, we simulate an unhandled application crash or Out-Of-Memory kill where the main container process (PID 1) dies suddenly. The pod itself is not deleted—the node's kubelet detects the process exit and enforces the pod's restartPolicy: Always.
+
+1.Pick a frontend pod and check its current restart count:
+
+Bash
+
+TARGET_POD=$(kubectl get pods -n mini-project-1 -l app=frontend -o jsonpath='{.items[0].metadata.name}')
+kubectl get pod $TARGET_POD -n mini-project-1
+
+Notice: RESTARTS is currently 0.
+
+2.Send SIGKILL (kill -9) to process 1 inside the container:
+
+Bash
+kubectl exec -n mini-project-1 $TARGET_POD -- kill 1
+
+(The command will exit with an error code like command terminated with exit code 137, which is expected when killing PID 1).
+
+3.Verify the self-healing restart:
+
+Check the pod status immediately:
+
+Bash
+kubectl get pod $TARGET_POD -n mini-project-1
+
+Result:
+The pod name remains the same (it was not rescheduled to a new pod).
+STATUS is back to Running.
+RESTARTS has incremented to 1.
+The kubelet restarted the container in less than 2 seconds.
+
+Test 3: Liveness Probe Failure (Automated Recovery from Deadlock)
+
+A process might still be running (no crash), but stuck in a deadlock or unresponsive to traffic. This is where Liveness Probes trigger automated intervention.
+
+1.Target the Redis pod:
+
+Bash
+REDIS_POD=$(kubectl get pods -n mini-project-1 -l app=redis -o jsonpath='{.items[0].metadata.name}')
+echo "Redis pod: $REDIS_POD"
+
+2.Shut down the Redis server process directly:
+Simulate Redis becoming unresponsive without killing the container itself:
+
+Bash
+kubectl exec -n mini-project-1 $REDIS_POD -- redis-cli -a SuperSecureK8sPassword123! shutdown
+
+3.Observe probe failure and kubelet intervention:
+
+Watch the pod:
+
+Bash
+kubectl get pod $REDIS_POD -n mini-project-1 -w
+
+Within 5–10 seconds (as configured in periodSeconds: 10):
+
+The TCP probe to port 6379 fails.
+Inspect the events log:
+
+Bash
+kubectl describe pod $REDIS_POD -n mini-project-1 | grep -A 5 -B 2 "Liveness probe failed"
+
+Result: The kubelet kills the unresponsive container and starts a fresh Redis instance. RESTARTS increments to 1.
+
+Key Takeaway: The Ephemeral Storage Trap
+
+Now that you've watched the Redis container restart, notice what happened to the data:
+Because Redis was running as a standard Deployment with no persistent volume mounted, any data or hit counter values stored in memory or local disk before the restart were permanently wiped.
+
+Let's upgrade Redis to a StatefulSet with a PersistentVolumeClaim (PVC) and test data survival across pod restarts.
