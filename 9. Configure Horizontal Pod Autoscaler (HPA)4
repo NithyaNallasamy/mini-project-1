@@ -1,0 +1,57 @@
+HPA requires Metrics Server running so it can scrape CPU and memory usage from the Kubelet.
+
+1. Enable Metrics Server
+
+minikube addons enable metrics-server
+
+Verify metrics are being collected (wait 30–60s for the first scrape):
+
+kubectl top nodes
+kubectl top pods -n mini-project-1
+
+2. Create the HPA Manifest (05-hpa.yaml)T
+
+This scales the frontend deployment between 2 and 6 replicas when CPU usage exceeds 50% of the pod's CPU 
+request (requests: cpu: 50m --> 25m threshold).
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend-hpa
+  namespace: mini-project-1
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend-deployment
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+
+Apply it:
+
+kubectl apply -f 05-hpa.yaml
+
+kubectl get hpa -n mini-project-1 -w
+
+3. Generate CPU Load to Trigger Autoscaling
+
+Run a temporary ApacheBench (ab) or BusyBox pod to flood the frontend service:
+
+kubectl run -i --tty load-generator --rm --image=busybox:1.28 --restart=Never -n mini-project-1 -- /bin/sh -c "while true; do wget -q -O- http://frontend-svc; done"
+
+In another terminal, watch the HPA and pod count surge:
+
+kubectl get hpa -n mini-project-1 -w
+kubectl get pods -n mini-project-1 -l app=frontend -w
+
+You will see replicas increase from 2 --> 4 --> 6. When you stop the load generator (Ctrl+C), HPA stabilizes 
+and scales back down after the cooldown period (default 5 minutes).
+
+
