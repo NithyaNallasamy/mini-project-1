@@ -1,0 +1,63 @@
+An Ingress Controller acts as the single reverse proxy / layer 7 load balancer into your cluster, 
+terminating HTTP requests and routing them based on hostnames (myapp.local) and URL paths without
+requiring kubectl port-forward.
+
+1. Enable NGINX Ingress Controller
+If using Minikube:
+
+minikube addons enable ingress
+
+(Wait until ingress-nginx-controller pod in namespace ingress-nginx is Running):
+
+kubectl get pods -n ingress-nginx -w
+
+2. Ingress Manifest (04-ingress.yaml)
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+  namespace: mini-project-1
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: myapp.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-svc
+                port:
+                  number: 80
+
+
+Deploy it:
+
+kubectl apply -f 04-ingress.yaml
+
+2. Map myapp.local in /etc/hosts
+
+Find your Minikube IP:
+
+minikube ip
+
+(Suppose the output is 192.168.49.2).
+
+Add this IP to your host/WSL /etc/hosts file (requires sudo):
+
+echo "$(minikube ip) myapp.local" | sudo tee -a /etc/hosts
+
+(On Windows host directly, add 127.0.0.1 myapp.local or the Minikube IP to C:\Windows\System32\drivers\etc\hosts
+ if accessing via Windows browser).
+
+ 3. Test Routing
+
+curl http://myapp.local
+Or open [http://myapp.local](http://myapp.local) in your browser. You should see the podinfo UI routing 
+directly through the Ingress controller without any kubectl port-forward.
+
+
