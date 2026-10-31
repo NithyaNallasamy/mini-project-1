@@ -9,6 +9,8 @@ Verify metrics are being collected (wait 30–60s for the first scrape):
 kubectl top nodes
 kubectl top pods -n mini-project-1
 
+(Once you see CPU/Memory readouts rather than errors, the metrics pipeline is operational).
+
 2. Create the HPA Manifest (05-hpa.yaml)T
 
 This scales the frontend deployment between 2 and 6 replicas when CPU usage exceeds 50% of the pod's CPU 
@@ -40,11 +42,15 @@ kubectl apply -f 05-hpa.yaml
 
 kubectl get hpa -n mini-project-1 -w
 
-3. Generate CPU Load to Trigger Autoscaling
+3. Run the Load Generator
+
+In a separate terminal, launch a lightweight container that runs a tight loop sending requests to the frontend service:
 
 Run a temporary ApacheBench (ab) or BusyBox pod to flood the frontend service:
 
 kubectl run -i --tty load-generator --rm --image=busybox:1.28 --restart=Never -n mini-project-1 -- /bin/sh -c "while true; do wget -q -O- http://frontend-svc; done"
+
+Verification: Under TARGETS, you will initially see <unknown>/50% which will transition to 0%/50% or similar within a minute.
 
 In another terminal, watch the HPA and pod count surge:
 

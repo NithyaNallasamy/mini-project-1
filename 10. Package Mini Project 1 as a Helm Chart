@@ -1,0 +1,67 @@
+Package Mini Project 1 as a Helm Chart
+Instead of managing 5 individual YAML manifests (01-config.yaml, 02-redis.yaml, 03-frontend.yaml, 04-ingress.yaml, 
+05-hpa.yaml), Helm combines them into a reusable package governed by a single values.yaml file.
+
+1. Initialize the Chart Structure
+
+helm create k8s-mini-project-1
+
+This generates a template tree:
+
+k8s-mini-project-1/
+├── Chart.yaml          # Metadata (name, version, appVersion)
+├── values.yaml         # Default configuration values
+└── templates/          # Jinja/Go-templated Kubernetes manifests
+    ├── deployment.yaml
+    ├── service.yaml
+    ├── ingress.yaml
+    ├── hpa.yaml
+    ├── NOTES.txt
+    └── _helpers.tpl
+
+2. Clean up Defaults and Add Components
+
+You replace the boilerplates with parameterized templates for:
+
+templates/redis-statefulset.yaml & templates/redis-service.yaml
+
+templates/frontend-deployment.yaml & templates/frontend-service.yaml
+
+templates/ingress.yaml
+
+templates/hpa.yaml
+
+templates/configmap.yaml & templates/secret.yaml
+
+3. Parameterize in values.yaml
+
+Centralize replica counts, image tags, domains, and resources:
+
+frontend:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/stefanprodan/podinfo
+    tag: 6.5.4
+  resources:
+    limits:
+      cpu: 150m
+      memory: 64Mi
+    requests:
+      cpu: 50m
+      memory: 32Mi
+
+redis:
+  storage: 1Gi
+  image:
+    repository: redis
+    tag: 7-alpine
+
+ingress:
+  enabled: true
+  host: myapp.local
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 50
