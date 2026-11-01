@@ -45,7 +45,6 @@ kubectl get hpa -n mini-project-1 -w
 3. Run the Load Generator
 
 In a separate terminal, launch a lightweight container that runs a tight loop sending requests to the frontend service:
-
 Run a temporary ApacheBench (ab) or BusyBox pod to flood the frontend service:
 
 kubectl run -i --tty load-generator --rm --image=busybox:1.28 --restart=Never -n mini-project-1 -- /bin/sh -c "while true; do wget -q -O- http://frontend-svc; done"

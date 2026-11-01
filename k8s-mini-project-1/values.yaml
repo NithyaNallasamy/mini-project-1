@@ -1,0 +1,50 @@
+global:
+  namespace: mini-project-1
+
+frontend:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/stefanprodan/podinfo
+    tag: 6.5.4
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    limits:
+      cpu: 150m
+      memory: 64Mi
+    requests:
+      cpu: 50m
+      memory: 32Mi
+  env:
+    logLevel: info
+    backendUrl: "http://redis-svc:6379"
+
+redis:
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  password: "SuperSecureK8sPassword123!"
+  storage:
+    size: 1Gi
+    accessMode: ReadWriteOnce
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: myapp.local
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 50

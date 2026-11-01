@@ -1,0 +1,11 @@
+Application {{ .Release.Name }} deployed successfully!
+
+Access your application:
+{{- if .Values.ingress.enabled }}
+1. Ingress Host: http://{{ .Values.ingress.host }}
+   (Ensure '{{ .Values.ingress.host }}' is mapped to your Minikube IP or 127.0.0.1 in /etc/hosts)
+{{- else }}
+1. Run port-forward:
+   kubectl port-forward svc/frontend-svc 8080:80 -n {{ .Release.Namespace }}
+   Then visit: http://localhost:8080
+{{- end }}

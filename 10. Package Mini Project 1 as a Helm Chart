@@ -2,7 +2,8 @@ Package Mini Project 1 as a Helm Chart
 Instead of managing 5 individual YAML manifests (01-config.yaml, 02-redis.yaml, 03-frontend.yaml, 04-ingress.yaml, 
 05-hpa.yaml), Helm combines them into a reusable package governed by a single values.yaml file.
 
-1. Initialize the Chart Structure
+1. Directory Structure
+Inside your project directory (~/projects/my-k8s-project/), create the chart layout:
 
 helm create k8s-mini-project-1
 
@@ -19,29 +20,34 @@ k8s-mini-project-1/
     ├── NOTES.txt
     └── _helpers.tpl
 
-2. Clean up Defaults and Add Components
+Run this command to create the folders cleanly:
 
-You replace the boilerplates with parameterized templates for:
+mkdir -p k8s-mini-project-1/templates
+cd k8s-mini-project-1
 
-templates/redis-statefulset.yaml & templates/redis-service.yaml
+2. Chart Metadata (Chart.yaml)
 
-templates/frontend-deployment.yaml & templates/frontend-service.yaml
+apiVersion: v2
+name: k8s-mini-project-1
+description: A multi-tier web application with Redis persistence, Ingress routing, and HPA
+type: application
+version: 0.1.0
+appVersion: "6.5.4"
 
-templates/ingress.yaml
+3. Central Values Configuration (values.yaml)
 
-templates/hpa.yaml
-
-templates/configmap.yaml & templates/secret.yaml
-
-3. Parameterize in values.yaml
-
-Centralize replica counts, image tags, domains, and resources:
+global:
+  namespace: mini-project-1
 
 frontend:
   replicaCount: 2
   image:
     repository: ghcr.io/stefanprodan/podinfo
     tag: 6.5.4
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
   resources:
     limits:
       cpu: 150m
@@ -49,15 +55,30 @@ frontend:
     requests:
       cpu: 50m
       memory: 32Mi
+  env:
+    logLevel: info
+    backendUrl: "http://redis-svc:6379"
 
 redis:
-  storage: 1Gi
   image:
     repository: redis
     tag: 7-alpine
+    pullPolicy: IfNotPresent
+  password: "SuperSecureK8sPassword123!"
+  storage:
+    size: 1Gi
+    accessMode: ReadWriteOnce
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
 
 ingress:
   enabled: true
+  className: nginx
   host: myapp.local
 
 autoscaling:
@@ -65,3 +86,249 @@ autoscaling:
   minReplicas: 2
   maxReplicas: 6
   targetCPUUtilizationPercentage: 50
+
+4. Template Manifests (templates/)
+templates/_helpers.tpl
+
+{{/* Common labels */}}
+{{- define "app.labels" -}}
+helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+templates/secret.yaml
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-secret
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  REDIS_PASSWORD: {{ .Values.redis.password | quote }}
+
+templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+data:
+  REDIS_HOST: "redis-svc"
+  REDIS_PORT: "6379"
+  LOG_LEVEL: {{ .Values.frontend.env.logLevel | quote }}
+  BACKEND_URL: {{ .Values.frontend.env.backendUrl | quote }}
+
+templates/redis-service.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-svc
+  labels:
+    app: redis
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - port: 6379
+      name: redis
+  selector:
+    app: redis
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+templates/redis-statefulset.yaml
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  labels:
+    app: redis
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  serviceName: "redis-svc"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: redis
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          command:
+            - "redis-server"
+            - "--appendonly"
+            - "yes"
+            - "--requirepass"
+            - "$(REDIS_PASSWORD)"
+            - "--dir"
+            - "/data"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secret
+                  key: REDIS_PASSWORD
+          ports:
+            - containerPort: 6379
+              name: redis
+          volumeMounts:
+            - name: redis-storage
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - redis-cli -a "$REDIS_PASSWORD" ping | grep PONG
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-storage
+      spec:
+        accessModes:
+          - {{ .Values.redis.storage.accessMode | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.redis.storage.size | quote }}
+
+templates/frontend-service.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-svc
+  labels:
+    app: frontend
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.frontend.service.type }}
+  ports:
+    - port: {{ .Values.frontend.service.port }}
+      targetPort: 9898
+      name: http
+  selector:
+    app: frontend
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+templates/frontend-deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  labels:
+    app: frontend
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.frontend.replicaCount }}
+  selector:
+    matchLabels:
+      app: frontend
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: frontend
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: web
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          ports:
+            - containerPort: 9898
+              name: http
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-config
+          env:
+            - name: PODINFO_BACKEND_URL
+              value: "http://redis-svc:6379"
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 9898
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9898
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+
+templates/NOTES.txt
+
+Application {{ .Release.Name }} deployed successfully!
+
+Access your application:
+{{- if .Values.ingress.enabled }}
+1. Ingress Host: http://{{ .Values.ingress.host }}
+   (Ensure '{{ .Values.ingress.host }}' is mapped to your Minikube IP or 127.0.0.1 in /etc/hosts)
+{{- else }}
+1. Run port-forward:
+   kubectl port-forward svc/frontend-svc 8080:80 -n {{ .Release.Namespace }}
+   Then visit: http://localhost:8080
+{{- end }}
+
+
+5. Deployment & Testing Commands
+
+1.Lint and validate chart syntax:
+
+Make sure you are in the parent directory containing the k8s-mini-project-1 folder:
+
+helm lint ./k8s-mini-project-1
+
+Verification: Should output 1 chart(s) linted, 0 chart(s) failed.
+
+2.Dry-run rendering (check generated YAML):
+
+Inspect how templates resolve without modifying cluster state:
+
+helm install mini-app ./k8s-mini-project-1 --dry-run --debug
+
+3.Deploy to a fresh namespace:
+
+Deploy the complete stack in an isolated release:
+
+helm install mini-app ./k8s-mini-project-1 -n mini-project-helm --create-namespace
+
+4.Verify all resources are up:
+
+kubectl get all,pvc,ingress,hpa -n mini-project-helm
+
+Verification: You will see 2 frontend pods, 1 redis-0 pod, 1 bounded PVC, Ingress pointing to myapp.local,
+ and the HPA targeting the deployment.
+ 
+5.Perform an in-place configuration update:
+
+Change replica count dynamically using CLI overrides:
+
+helm upgrade mini-app ./k8s-mini-project-1 -n mini-project-helm --set frontend.replicaCount=3
+
+kubectl get pods -n mini-project-helm -l app=frontend
+
